@@ -1,11 +1,45 @@
 module WashOutHelper
 
+  def wsdl_multi_data_options(param)
+    case controller.soap_config.wsdl_style
+    when 'rpc'
+      { :"xsi:type" => param.namespaced_type }
+    when 'document'
+      value = nil
+      attributes = { }
+      param.map.each do |p|
+        if p.name[0] == '@'
+          attributes[p.name.gsub('@','')] = p.value
+        elsif p.name == 'val'
+          value = p.value
+        end
+      end
+
+      param.delete_if { |p| p.name[0] == '@' }
+
+      return value, attributes
+    end
+  end
+
   def wsdl_data_options(param)
     case controller.soap_config.wsdl_style
     when 'rpc'
       { :"xsi:type" => param.namespaced_type }
     when 'document'
-      { }
+      attributes = { }
+      if param.struct? 
+        unless param.multiplied 
+          param.map.each do |p| 
+            if p.name[0] == '@' 
+              attributes[p.name.gsub('@','')] = p.value 
+              # param.map.delete(p)
+            end
+          end
+
+          param.map.delete_if { |p| p.name[0] == '@' }
+        end
+      end
+      attributes
     end
   end
 
@@ -30,8 +64,13 @@ module WashOutHelper
           end
         else
           param.map.each do |p|
-            xml.tag! tag_name, param_options do
-              wsdl_data(xml, p.map)
+            v, param_options = wsdl_multi_data_options(p)
+            if v 
+              xml.tag! tag_name, v, param_options
+            else
+              xml.tag! tag_name, param_options do
+                wsdl_data(xml, p)
+              end
             end
           end
         end
@@ -48,7 +87,7 @@ module WashOutHelper
           xml.tag! "xsd:sequence" do
             param.map.each do |value|
               more << value if value.struct?
-              xml.tag! "xsd:element", wsdl_occurence(value, false, :name => value.name, :type => value.namespaced_type)
+              xml.tag! "xsd:element", wsdl_occurence(value, false, :name => value.name, :type => value.namespaced_type) if value.name[0] != '@'
             end
           end
         end
